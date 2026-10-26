@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>商业巨子：白手起家</title>
+<meta name="description" content="2D像素风商业模拟游戏 —— 从打工摆摊到金融帝国">
+<!-- 像素风标题字体 + 中文正文字体（Google Fonts，离线环境下会自动回退到本地字体） -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏪</text></svg>">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ============================================================
+     一、开屏界面：新游戏 / 继续 / 读取存档
+============================================================ -->
+<div id="boot-screen">
+  <h1>商业巨子：白手起家</h1>
+  <div class="sub">2D 像素风商业模拟 · 打工 · 倒卖 · 摆摊 · 开店 · 炒股期货外汇</div>
+  <div class="boot-btns">
+    <button class="primary" id="btn-newgame">🎮 新游戏</button>
+    <button id="btn-continue" style="display:none">▶ 继续游戏（自动存档）</button>
+  </div>
+  <div class="sub" style="margin-top:22px">或从存档槽读取：</div>
+  <div id="slot-list"></div>
+</div>
+
+<!-- ============================================================
+     二、游戏主界面
+============================================================ -->
+<div id="game">
+  <!-- 顶部状态栏 -->
+  <div id="topbar">
+    <span class="brand">商业巨子</span>
+    <span class="phase-badge" id="tb-phase">P1</span>
+    <span class="stat">📅 <span class="v" id="tb-date">-</span></span>
+    <span class="stat">🕐 <span class="v" id="tb-time">-</span></span>
+    <span class="stat" id="tb-weather">-</span>
+    <span class="spacer"></span>
+    <span class="stat">💵 现金 <span class="v" id="tb-cash">-</span></span>
+    <span class="stat">💎 净资产 <span class="v" id="tb-net">-</span></span>
+    <button class="small" onclick="BT.App.skipHour()">⏩ 过1小时</button>
+    <button class="small primary" onclick="BT.App.sleepNow()">🌙 睡觉</button>
+  </div>
+
+  <!-- 左侧边栏：角色状态 + 导航 -->
+  <div id="sidebar">
+    <div class="avatar-box">
+      <div class="avatar-emoji">🧑‍💼</div>
+      <div class="hint" id="side-region">-</div>
+    </div>
+    <div class="bar-row" id="bar-stamina">
+      <div class="bar-label"><span>💪 体力</span><span class="val">-</span></div>
+      <div class="bar-track"><div class="bar-fill stamina" style="width:100%"></div></div>
+    </div>
+    <div class="bar-row" id="bar-energy">
+      <div class="bar-label"><span>🧠 精力</span><span class="val">-</span></div>
+      <div class="bar-track"><div class="bar-fill energy" style="width:100%"></div></div>
+    </div>
+    <div class="bar-row" id="bar-health">
+      <div class="bar-label"><span>❤️ 健康</span><span class="val">-</span></div>
+      <div class="bar-track"><div class="bar-fill health" style="width:100%"></div></div>
+    </div>
+
+    <ul class="nav-list">
+      <li><button data-tab="map" class="active">🗺️ 地图 / 行动</button></li>
+      <li><button data-tab="trade">📦 交易</button></li>
+      <li><button data-tab="jobs">💼 打工与技能</button></li>
+      <li><button data-tab="stall">🧺 摆摊</button></li>
+      <li><button data-tab="shop">🏬 店铺<span class="lock" id="nav-biz-lock">🔒m2</span></button></li>
+      <li><button data-tab="biz">🏢 公司<span class="lock" id="nav-biz2-lock">🔒m3</span></button></li>
+      <li><button data-tab="market">📈 金融</button></li>
+      <li><button data-tab="quests">📋 任务</button></li>
+      <li><button data-tab="save">💾 存档</button></li>
+    </ul>
+  </div>
+
+  <!-- 主内容区 -->
+  <div id="main">
+
+    <!-- 地图 / 行动 -->
+    <div class="tabpage active" id="tab-map">
+      <div class="card">
+        <canvas id="mapCanvas"></canvas>
+        <div style="display:flex;justify-content:space-between;margin-top:8px">
+          <h3 id="map-region-name">-</h3>
+        </div>
+        <div class="desc" id="map-region-desc">-</div>
+      </div>
+      <div class="card"><h3>🔒 待解锁区域</h3><div id="map-unlock-list"></div></div>
+      <div class="card"><h3>🏆 第一阶段里程碑</h3><div id="milestone-list"></div></div>
+    </div>
+
+    <!-- 交易 -->
+    <div class="tabpage" id="tab-trade">
+      <div class="card">
+        <h3>📦 商品交易 —— <span id="trade-region"></span></h3>
+        <div class="desc">背包容量：<span id="trade-bag"></span>　｜　同一商品在不同区域价格不同，善用「比价」找差价机会</div>
+        <div id="trade-goods-list"></div>
+      </div>
+    </div>
+
+    <!-- 打工与技能 -->
+    <div class="tabpage" id="tab-jobs">
+      <div class="card"><h3>💼 临时工（当前区域）</h3><div id="jobs-list"></div></div>
+      <div class="card"><h3>📚 技能学习</h3><div id="skills-list"></div></div>
+    </div>
+
+    <!-- 摆摊 -->
+    <div class="tabpage" id="tab-stall">
+      <div id="stall-box"></div>
+    </div>
+
+    <!-- 第一阶段店铺 -->
+    <div class="tabpage" id="tab-shop">
+      <div id="shop-box"></div>
+    </div>
+
+    <!-- 第二阶段公司 -->
+    <div class="tabpage" id="tab-biz">
+      <div id="biz-box"></div>
+    </div>
+
+    <!-- 金融市场 -->
+    <div class="tabpage" id="tab-market">
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <h3 style="margin:0">📈 金融市场</h3>
+          <span class="tag up" id="mkt-index">大盘指数 -</span>
+          <span class="spacer"></span>
+          <div class="pill-group" style="margin:0">
+            <button id="mkt-tab-stock" data-mkt-tab="stock" class="active">股票</button>
+            <button id="mkt-tab-future" data-mkt-tab="future">期货</button>
+            <button id="mkt-tab-forex" data-mkt-tab="forex">外汇</button>
+          </div>
+        </div>
+      </div>
+      <div class="grid cols-2">
+        <div class="card">
+          <h3>行情列表</h3>
+          <div id="mkt-list"></div>
+        </div>
+        <div class="card">
+          <h3 id="instr-title">-</h3>
+          <div class="chart-box"><canvas id="instrChart"></canvas></div>
+          <div id="instr-info"></div>
+        </div>
+      </div>
+      <div class="card"><h3>💼 我的持仓</h3><div id="mkt-portfolio"></div></div>
+    </div>
+
+    <!-- 任务与成就 -->
+    <div class="tabpage" id="tab-quests">
+      <div class="card"><h3>📋 新手任务</h3><div id="quest-chain"></div></div>
+      <div class="card"><h3>✨ 当前委托</h3><div id="quest-commission"></div></div>
+      <div class="card"><h3>🎖️ 成就</h3><div id="quest-ach"></div></div>
+    </div>
+
+    <!-- 存档 -->
+    <div class="tabpage" id="tab-save">
+      <div class="card"><h3>💾 存档管理</h3><div class="desc">每天睡觉后自动存档；也可以手动保存到以下三个槽位。</div><div id="save-slots"></div></div>
+    </div>
+
+  </div>
+
+  <!-- 日志面板 -->
+  <div id="logpanel">
+    <h3 style="margin-top:0">📜 日志</h3>
+    <div id="logList"></div>
+  </div>
+
+  <!-- 右侧信息面板（预留：当前可扩展为快捷信息，目前并入侧边/日志，占位保持三栏网格） -->
+  <div id="rightpanel">
+    <h3 style="margin-top:0">ℹ️ 小贴士</h3>
+    <div class="hint">· 体力/精力过低会降低打工与摆摊效率，注意休息。</div>
+    <div class="hint">· 生鲜类商品会每天损耗，别囤太多。</div>
+    <div class="hint">· 金融市场开局即可交易，但没有闲钱就先把第一阶段做稳。</div>
+    <div class="hint">· 净资产 = 现金 + 存货估值 + 生意资产 + 持仓 − 负债。</div>
+    <div class="hint">· 游戏会在每晚睡觉后自动保存。</div>
+  </div>
+</div>
+
+<div id="toast-wrap"></div>
+
+<!-- ============================================================
+     三、脚本加载（原生 <script>，无需构建工具，顺序即依赖顺序）
+============================================================ -->
+<script src="js/core/utils.js"></script>
+<script src="js/core/config.js"></script>
+<script src="js/core/state.js"></script>
+<script src="js/core/economy.js"></script>
+<script src="js/core/events.js"></script>
+
+<script src="js/phase1/jobs.js"></script>
+<script src="js/phase1/trade.js"></script>
+<script src="js/phase1/stall.js"></script>
+<script src="js/phase1/shop.js"></script>
+<script src="js/phase1/quests.js"></script>
+
+<script src="js/phase2/biz.js"></script>
+
+<script src="js/phase3/market.js"></script>
+<script src="js/phase3/empire.js"></script>
+
+<script src="js/ui/chart.js"></script>
+<script src="js/ui/map.js"></script>
+<script src="js/ui/render.js"></script>
+<script src="js/ui/app.js"></script>
+</body>
+</html>
