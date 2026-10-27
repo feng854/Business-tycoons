@@ -1,0 +1,15 @@
+{
+  "name": "business-tycoon",
+  "version": "1.0.0",
+  "description": "商业巨子：白手起家 —— 2D像素风商业模拟网页游戏（纯原生 HTML/CSS/JS，无需构建）",
+  "private": true,
+  "scripts": {
+    "start": "npx http-server -p 8080 -c-1",
+    "test": "node tests/smoke.spec.js",
+    "test:balance": "node tests/balance.spec.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.47.0"
+  },
+  "license": "MIT"
+}
