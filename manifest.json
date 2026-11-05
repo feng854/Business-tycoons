@@ -1,0 +1,17 @@
+{
+  "name": "商业巨子：白手起家",
+  "short_name": "商业巨子",
+  "description": "2.5D 商业模拟：打工摆摊、开店扩张、上市与金融帝国",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "any",
+  "background_color": "#11141c",
+  "theme_color": "#11141c",
+  "lang": "zh-CN",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
