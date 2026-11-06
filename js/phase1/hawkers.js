@@ -39,7 +39,8 @@
   Hk.price = function (S, rid, gid) {
     if (!Hk.sellers(S, rid, gid)) return 0;
     var c = reg(S, rid).cut[gid], cut = c && c.until >= S.day ? c.v : C.HAWKERS.cut;
-    return U.round2(BT.Eco.sellPrice(S, gid, rid) * (1 - cut));
+    var mul = BT.B2B && BT.B2B.hawkerCostMul ? BT.B2B.hawkerCostMul(S, rid, gid) : 1; /* 从你批发部进货的散户，零售价跟着你的批发价走 */
+    return U.round2(BT.Eco.sellPrice(S, gid, rid) * (1 - cut) * mul);
   };
   /** 是否正在甩卖这件货（游击压价） */
   Hk.dumping = function (S, rid, gid) { var c = reg(S, rid) && reg(S, rid).cut[gid]; return !!(c && c.until >= S.day && Hk.sellers(S, rid, gid)); };
@@ -76,7 +77,7 @@
       var h = S.hawkers.r[r.id], base = C.HAWKERS.base[r.id] || 4;
       h.heat *= 0.8;
       /* 进场：基准概率 + 你在这赚得越多越吸引人；离场：人太多、压价太狠都待不住，并向基准值回归 */
-      var enter = 0.08 + Math.min(0.35, h.heat / 1500);
+      var enter = 0.08 + Math.min(0.35, h.heat / 1500) + (BT.B2B && BT.B2B.hawkerBoost ? BT.B2B.hawkerBoost(S, r.id) : 0); /* 你的批发账期好 → 更多人摆摊 */
       var leave = 0.06 + (h.n > base * 1.5 ? 0.15 : 0) + (h.n > base ? 0.05 : 0);
       if (h.n < base * 2.2 && rng.chance(enter)) h.n += 1;
       if (h.n > 0 && rng.chance(leave)) h.n -= 1;
