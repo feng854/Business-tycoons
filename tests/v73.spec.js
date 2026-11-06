@@ -1,12 +1,11 @@
 /* ==========================================================================
- * 文件：tests/v73.spec.js
- * 作用：v7.3 回归 —— 经济平衡与门店诊断、已知坑修复（还款刷信用 / 招标背包交货 / 经理自动应战）、
- *       竞争第二步（锁供应 / 抢铺位 / 抬租 / 结盟 / 反垄断）、期货外汇对手盘（滑点 / 对手方 / 持仓报告 / 猎杀 / 追加保证金）、UI 与 iPad 横屏
- * 运行：node tests/v73.spec.js
+ * 文件：tests/v74.spec.js
+ * 作用：v7.4 业务线回归 —— 批发商（B2B）/ 社区团购 / 奶茶店，以及与流水、净资产、散户、AI 的联动、UI、iPad 横屏
+ * 运行：node tests/v74.spec.js
  * ========================================================================== */
 const { chromium } = require('playwright');
 const path = require('path'), http = require('http'), fs = require('fs');
-const ROOT = path.join(__dirname, '..'), PORT = 8963;
+const ROOT = path.join(__dirname, '..'), PORT = 8964;
 const server = http.createServer((req, res) => {
   let p = decodeURIComponent(req.url.split('?')[0]); if (p === '/') p = '/index.html';
   fs.readFile(path.join(ROOT, p), (err, data) => {
@@ -24,179 +23,154 @@ function check(name, ok, extra) { console.log((ok ? '✅ ' : '❌ ') + name + (e
   page.on('console', m => { if (m.type() === 'error' && !/fonts\.googleapis|TUNNEL|CONNECTION/.test(m.text())) errors.push(m.text()); });
   await page.goto(`http://localhost:${PORT}/index.html`); await page.click('#btn-newgame'); await page.waitForSelector('#game.active');
 
-  /* 1. 经济平衡 + 诊断 + 已知坑 */
-  const e = await page.evaluate(() => {
-    const o = {}, C = BT.CFG;
-    /* 认真经营（商业街、2 个店员、本区热销货）应该赚钱；城中村配 3 个人 + 冷门货应该亏，而且诊断能说出原因 */
-    const run = (rid, staff, goods, mk) => {
-      BT.newGame(21); BT.Eco.rollWeather(BT.S); BT.Eco.ensurePriceDay(BT.S);
-      const S = BT.S, B = BT.Biz; S.cash = 80000; S.unlockedRegions = C.REGIONS.map(r => r.id); S.milestones = { m1: true, m2: true, m3: true }; S.phase = 2;
-      B.ensure(S); B.openShop(S, rid); const sh = S.biz.shops[0]; for (let i = 0; i < staff; i++) B.hire(S, sh.id, 'clerk');
-      for (let d = 0; d < 20; d++) { goods.forEach(g => { if ((sh.inventory[g] || 0) < 40) { B.wholesaleBuy(S, rid, g, 100); B.transferToShop(S, sh.id, g, 100); } B.setShelf(S, sh.id, g, mk); }); (S.biz.deals || []).slice().forEach(x => BT.Rivals.respond(S, x.id, 'decline')); BT.Eco.sleep(S); }
-      return { d: B.diagnose(S, sh), S: S, sh: sh };
-    };
-    const good = run('cbd', 2, ['cloth', 'phonecase', 'drink', 'tea'], 1.35);
-    o.goodNet = Math.round(good.d.avg.net); o.good = good.d.avg.net > 0 && good.d.grade !== 'loss';
-    const bad = run('slum', 3, ['antique', 'tea', 'cloth'], 1.6);
-    o.badNet = Math.round(bad.d.avg.net);
-    o.bad = bad.d.avg.net < good.d.avg.net / 3 && bad.d.items.some(x => /不好卖/.test(x.t)) && bad.d.items.some(x => /价格很敏感|人手/.test(x.t));
-    o.diagShape = bad.d.items.every(x => x.t && x.lv) && bad.d.avg && isFinite(bad.d.avg.gp);
-    /* 还款刷信用修复 */
-    const S = bad.S, B = BT.Biz; S.cash = 100000; B.takeLoan(S, 5000); const l = S.biz.loans[0]; const c0 = S.biz.creditScore;
-    for (let i = 0; i < 20; i++) B.repayLoan(S, l.id, 1);
-    o.noFarm = S.biz.creditScore === c0;
-    B.repayLoan(S, l.id, 1000); const c1 = S.biz.creditScore; B.repayLoan(S, l.id, 1000);
-    o.repayOnce = c1 === c0 + 2 && S.biz.creditScore === c1;
-    /* 招标：背包里的货也能交 */
-    const Td = BT.Tender, ts = (S.tenders = S.tenders || { list: [], next: 999 });
-    ts.list.push({ id: 't1', buyer: '测试', gid: 'snack', qty: 30, budget: 9, myPrice: 8, myBond: 10, status: 'won', deadline: S.day + 5, close: S.day });
-    S.region = 'market'; S.bag.snack = []; BT.Trade.buy(S, 'snack', 20);
-    U = BT.U; Object.keys(S.biz.warehouses).forEach(r => S.biz.warehouses[r].goods.snack = 0); B.warehouse(S, 'market').goods.snack = 10;
-    o.tdHave = Td.have(S, 'snack') === 30;
-    const dr = Td.deliver(S, 't1'); o.tdBag = dr.ok && BT.Trade.qtyOf(S, 'snack') === 0 && (B.warehouse(S, 'market').goods.snack || 0) === 0;
-    /* 经理自动应战 */
-    BT.Manager.get(S); S.biz.mgr.on = true; const sh = bad.sh; sh.match = false;
-    const wj = BT.Rivals.get(S, 'wanjia'); wj.shops.slum = wj.shops.slum || { level: 1, rep: 50 };
-    wj.war.slum = 5; wj.camp.slum = { on: 'me', goods: ['cloth'], mode: 'undercut', cut: 0.1, my0: 0.3, spent: 0 };
-    BT.Manager.dailyTick(S); o.mgrOn = sh.match && sh.matchByMgr;
-    delete wj.war.slum; delete wj.camp.slum; BT.Manager.dailyTick(S); o.mgrOff = !sh.match;
-    return o;
-  });
-  check('平衡：认真经营的商业街店能赚钱', e.good, '日均净利 ' + e.goodNet);
-  check('平衡：城中村 + 冷门高价货远不如认真经营，诊断说出原因', e.bad, '日均净利 ' + e.badNet);
-  check('诊断数据结构完整', e.diagShape);
-  check('修复：反复还 ¥1 刷不了信用', e.noFarm);
-  check('修复：正常还款每天只加一次信用', e.repayOnce);
-  check('修复：招标可用背包 + 仓库的货交付', e.tdHave && e.tdBag);
-  check('区域经理：被打价格战时自动开「自动应战」，打完自动关', e.mgrOn && e.mgrOff);
+  const setup = `(function (seed) { BT.newGame(seed); BT.Eco.rollWeather(BT.S); BT.Eco.ensurePriceDay(BT.S); var S = BT.S, C = BT.CFG;
+    S.cash = 300000; S.unlockedRegions = C.REGIONS.map(function (r) { return r.id; }); S.milestones = { m1: true, m2: true, m3: true }; S.phase = 2; BT.Biz.ensure(S); S.biz.creditScore = 700; return S; })`;
 
-  /* 2. 竞争第二步 */
-  const c = await page.evaluate(() => {
-    const o = {}, C = BT.CFG;
-    BT.newGame(33); BT.Eco.rollWeather(BT.S); BT.Eco.ensurePriceDay(BT.S);
-    const S = BT.S, B = BT.Biz, Rv = BT.Rivals, T = Rv._t;
-    S.cash = 400000; S.unlockedRegions = C.REGIONS.map(r => r.id); S.milestones = { m1: true, m2: true, m3: true }; S.phase = 2;
-    B.ensure(S); S.biz.founded = S.day - 60;
-    B.openShop(S, 'oldst', 'corner'); B.openShop(S, 'market');
-    S.biz.shops.forEach(sh => { B.hire(S, sh.id, 'clerk'); ['snack', 'drink'].forEach(g => { B.wholesaleBuy(S, sh.regionId, g, 100); B.transferToShop(S, sh.id, g, 100); B.setShelf(S, sh.id, g, 1.3); }); });
-    for (let i = 0; i < 4; i++) { (S.biz.deals || []).slice().forEach(x => Rv.respond(S, x.id, 'decline')); BT.Eco.sleep(S); }
-    const xh = Rv.get(S, 'xinhui'), wj = Rv.get(S, 'wanjia');
-    /* 锁供应：敌对巨头安排锁货 → 到期生效 → 你批发贵 30%；签了长约不受影响 */
-    xh.att = -90; xh.fear = 0; xh.plan = null; xh.nextLock = 0; xh.nextSite = 999; xh.war = {}; xh.camp = {};
-    let n = 0; while (!(xh.plan && xh.plan.act === 'lock') && n++ < 3000) { xh.plan = null; T.planTactics(S, xh); if (xh.plan && xh.plan.act !== 'lock') xh.plan = null; }
-    o.lockPlan = xh.plan && xh.plan.act === 'lock' && S.biz.rivalNews.some(x => /独家供货|供应商/.test(x.text));
-    const g = xh.plan.gid; xh.plan.start = S.day; T.launchPlan(S, xh);
-    o.lockOn = !!Rv.lockOn(S, g);
-    const p0 = BT.Eco.buyPrice(S, g, 'market'); const cash0 = S.cash; B.wholesaleBuy(S, 'market', g, 10); const paid = cash0 - S.cash;
-    o.lockPrice = Math.abs(paid - BT.U.round2(BT.U.round2(p0 * 1.3) * (1 - B.buyerDiscount(S))) * 10) < 1;
-    BT.Supply.sign(S, g); const cash1 = S.cash; B.wholesaleBuy(S, 'market', g, 10); o.lockContract = (cash1 - S.cash) < paid * 0.85;
-    o.threatLock = Rv.threats(S).some(t => t.kind === 'lock');
-    /* 抢铺位：你开的是路口旺铺 → 抬租；否则占旺铺 → 你开不了旺铺 */
-    xh.plan = null; xh.nextSite = 0; xh.nextLock = 999; xh.cash = 300000;
-    const oldShop = S.biz.shops.find(s => s.regionId === 'oldst'); oldShop.last.profit = 100; xh.shops.oldst = xh.shops.oldst || { level: 2, rep: 50 };
-    n = 0; while (!(xh.plan && xh.plan.act === 'site') && n++ < 5000) { xh.plan = null; T.planTactics(S, xh); if (xh.plan && xh.plan.act !== 'site') xh.plan = null; }
-    o.sitePlan = xh.plan && xh.plan.hike === true;
-    xh.plan.start = S.day; T.launchPlan(S, xh);
-    o.hike = oldShop.hike && oldShop.hike.mul === 1.25;
-    const r0 = oldShop.rent; BT.Eco.sleep(S); o.hikeRent = Math.abs(oldShop.last.rent - Math.round(r0 * 1.25)) <= 1;
-    S.biz.sites = { cbd: { by: 'xinhui', until: S.day + 30 } };
-    o.cornerBlock = !B.openShop(S, 'cbd', 'corner').ok && B.openShop(S, 'cbd', 'street').ok;
-    /* 结盟：巨头不结；区域连锁按态度结；盟友不对你下手、巨头打你时出手 */
-    o.noBigAlly = !Rv.proposeAlly(S, 'xinhui').ok;
-    wj.att = 80; wj.cash = 10000; wj.war = {}; wj.camp = {}; wj.plan = null; wj.allyAsk = 0;
-    let ar; n = 0; do { wj.allyAsk = 0; ar = Rv.proposeAlly(S, 'wanjia'); } while (!ar.ok && n++ < 50);
-    o.ally = ar.ok && Rv.allied(S, wj);
-    wj.att = 80; wj.nextWar = 0; wj.aggr = 1; for (let i = 0; i < 300; i++) T.planWar(S, wj);
-    o.allyPeace = !wj.plan;
-    wj.shops.market = wj.shops.market || { level: 1, rep: 50 }; xh.shops.market = { level: 1, rep: 50 };
-    xh.plan = { act: 'war', on: 'me', rid: 'market', goods: ['snack'], mode: 'undercut', days: 10, start: S.day, cut: 0.1 }; T.launchPlan(S, xh);
-    o.allyHelp = wj.war.market > 0 && wj.camp.market && wj.camp.market.on === 'xinhui';
-    /* 反垄断：有证据 → 罚款、停战、解锁；没证据 → 你的信用 −10 */
-    xh.cash = 300000; S.biz.locks = {}; S.biz.locks.drink = { by: 'xinhui', until: S.day + 10, mul: 1.3 };
-    xh.camp.market.mode = 'predatory';
-    const ch = Rv.reportChance(S, xh); o.evid = ch >= 0.6;
-    const rr = Rv.report(S, 'xinhui'); const pr = S.biz.probes[0]; pr.p = 1; pr.until = S.day;
-    const xc = xh.cash; T.probeTick(S);
-    o.guilty = rr.ok && xh.cash < xc && !xh.war.market && !Rv.lockOn(S, 'drink') && xh.nextWar > S.day + 30;
-    const yy = Rv.get(S, 'yuanyang'); Rv.report(S, 'yuanyang'); S.biz.probes[0].p = 0; S.biz.probes[0].until = S.day;
-    const cr = S.biz.creditScore; T.probeTick(S); o.innocent = S.biz.creditScore === Math.max(300, cr - 10);
+  /* 1. 批发商 */
+  const b = await page.evaluate((setup) => {
+    const o = {}, C = BT.CFG, S = eval(setup)(41), B = BT.Biz, B2 = BT.B2B;
+    o.needWh = !B2.open(S, 'market').ok;
+    B.wholesaleBuy(S, 'market', 'snack', 200);
+    S.biz.creditScore = 500; o.needCredit = !B2.open(S, 'market').ok; S.biz.creditScore = 700;
+    const c0 = S.cash; o.open = B2.open(S, 'market').ok && c0 - S.cash === C.B2B.cost;
+    C.HAWKERS.goods.forEach(g => B.wholesaleBuy(S, 'market', g, 300));
+    B2.set(S, 'market', 'term', 7);
+    BT.Eco.sleep(S);
+    const L = S.biz.b2b.last; o.sold = L.units > 0 && L.rev > 0 && S.biz.b2b.ar.length > 0 && Object.keys(S.biz.b2b.share.market || {}).length > 0;
+    o.arWorth = B2.netWorth(S) > 0;
+    /* 渠道控价：抬批发价 → 散户零售价跟着涨 */
+    S.biz.b2b.share.market = { snack: 0.8 }; S.biz.b2b.depots.market.price = 1.0; const h0 = BT.Hawkers.price(S, 'market', 'snack');
+    S.biz.b2b.depots.market.price = 1.15; const h1 = BT.Hawkers.price(S, 'market', 'snack');
+    o.channel = h1 > h0; S.biz.b2b.depots.market.price = 1.0;
+    /* 账期到期收款；坏账 */
+    const ar0 = S.biz.b2b.ar.length; S.biz.b2b.ar.forEach(a => a.due = S.day + 1); const keep = C.B2B.badDebt.market; C.B2B.badDebt.market = 1;
+    BT.Eco.sleep(S); o.bad = S.biz.b2b.bad.length > 0 && S.biz.b2b.last.bad > 0; C.B2B.badDebt.market = keep;
+    const bc = S.cash; const cr = B2.collect(S); o.collect = cr.ok && S.biz.b2b.bad.length === 0;
+    /* AI 合同：签约 → 每天送货 → 断供 */
+    const rv = BT.Rivals.get(S, 'wanjia'); rv.att = 20;
+    S.biz.b2b.offers.push({ id: 'oT', rivalId: 'wanjia', gid: 'drink', qty: 30, price: 5, days: 30, expire: S.day + 2 });
+    o.sign = B2.respond(S, 'oT', true).ok && S.biz.b2b.contracts.length === 1;
+    const st0 = B.warehouse(S, 'market').goods.drink; BT.Eco.sleep(S);
+    o.deliver = B.warehouse(S, 'market').goods.drink <= st0 - 30 || S.biz.b2b.contracts[0].miss === 0;
+    rv.shops.market = rv.shops.market || { level: 1, rep: 50 };
+    const p0 = BT.Rivals.pull(rv, 'market'); const cut = B2.cutOff(S, S.biz.b2b.contracts[0].id);
+    o.cut = cut.ok && rv.cutUntil > S.day && BT.Rivals.pull(rv, 'market') < p0 * 0.85 && S.biz.b2b.contracts.length === 0;
+    /* 流水并入 */
+    const led = S.biz.ledger[S.biz.ledger.length - 1]; o.ledger = led && led.lines && led.lines.b2b != null;
     return o;
-  });
-  check('锁供应：敌对巨头先放风声再锁货', c.lockPlan && c.lockOn);
-  check('锁供应：你批发被锁的货贵 30%', c.lockPrice);
-  check('锁供应：签了长期供货合同就不受影响', c.lockContract);
-  check('锁供应出现在「针对你的行动」', c.threatLock);
-  check('抢铺位：你开路口旺铺 → 对手找房东抬租 25%', c.sitePlan && c.hike && c.hikeRent);
-  check('抢铺位：旺铺被占时开不了旺铺、临街照开', c.cornerBlock);
-  check('结盟：巨头不结盟', c.noBigAlly);
-  check('结盟：区域连锁可以结，结了不再对你下手', c.ally && c.allyPeace);
-  check('结盟：巨头打你时盟友在同区对它开战', c.allyHelp);
-  check('反垄断：掠夺定价 + 锁货证据充分，胜算高', c.evid);
-  check('反垄断：裁定违法 → 罚款、停战、解锁、冷却', c.guilty);
-  check('反垄断：证据不足 → 你的信用 −10', c.innocent);
+  }, setup);
+  check('批发部：要先有仓库、信用够才能开', b.needWh && b.needCredit && b.open);
+  check('批发部：给散户出货、按账期记应收、算份额', b.sold && b.arWorth);
+  check('渠道控价：抬批发价，散户零售价跟着涨', b.channel);
+  check('账期到期可能坏账；催收清账', b.bad && b.collect);
+  check('AI 供货合同：签约、送货', b.sign && b.deliver);
+  check('断供：对方吸引力下降、合同终止', b.cut);
+  check('批发利润并入公司流水', b.ledger);
 
-  /* 3. 期货 / 外汇对手盘 */
-  const f = await page.evaluate(() => {
-    const o = {}, S = BT.S, M = BT.Market, CP = BT.CP;
-    S.cash = 50000000; M.ensure(S); M.prepare(S); CP.ensure(S);
-    const px0 = S.market.futures.soy.price;
-    const small = M.openFutures(S, 'soy', 1, 'long'); M.closeFutures(S, 'soy', 1);
-    const big = M.openFutures(S, 'soy', 1200, 'long');
-    o.who = /对手方：/.test(big.msg); o.moved = S.market.futures.soy.price > px0;
-    const pos = S.market.posFut.soy; o.slip = pos.entry > px0 * (1 + 0.0003 / 2) + 0.01;
-    const sum = Object.values(S.market.cp.soy.pos).reduce((a, b) => a + b, 0) + pos.qty; o.zeroSum = Math.abs(sum) < 2;
-    o.tape = S.market.cp.soy.tape.length >= 2 && S.market.cp.soy.tape[0].q === 1200;
-    const info = CP.info(S, 'soy'); o.info = info.rows.length === 5 && info.asks.length === 5 && info.me && info.me.lots === 1200 && info.oi > 0;
-    /* 追加保证金：强平价远离 */
-    const liq0 = M.portfolio(S).futures.find(x => x.id === 'soy').liq;
-    M.addMargin(S, 'fut', 'soy', 2000000); const liq1 = M.portfolio(S).futures.find(x => x.id === 'soy').liq;
-    o.addMargin = liq1 < liq0;
-    M.closeFutures(S, 'soy', 1200);
-    /* 猎杀：大仓位 + 离强平价近 → 对冲基金反向做单 */
-    S.cash = 3000000; const lots = M.maxLots(S, 'fx', 'usd'); M.openForex(S, 'usd', Math.min(lots, 200), 'long');
-    const p = S.market.posFx.usd; p.margin = p.margin * 0.55; /* 手动让它接近强平 */
-    let hunted = false; for (let i = 0; i < 30 && !hunted; i++) { S.market.cp.usd.hunt = null; CP.daily(S); hunted = !!S.market.cp.usd.hunt; }
-    o.hunt = hunted && S.market.cp.usd.hunt.dir === -1 && S.market.cp.usd.tgt.hunter < 0;
-    const p1 = S.market.forex.usd.price; for (let t = 0; t < 12; t++) { S.market.cp.usd.hunt.until = S.day + 3; const it = { kind: 'forex', id: 'usd', def: M.fxMap.usd }; CP.tickFlow(S, it); }
-    o.hunterSold = S.market.cp.usd.pos.hunter < -10;
-    if (S.market.posFx.usd) M.closeForex(S, 'usd', Math.abs(S.market.posFx.usd.qty));
-    /* 金管局：偏离超过 3% 入场 */
-    S.market.forex.eur.price = M.fxMap.eur.base * 1.06; CP.daily(S);
-    o.cb = S.market.cp.eur.cbOn && S.market.cp.eur.tgt.cb < 0;
-    /* 长跑 100 天无 NaN */
-    let bad = 0; for (let d = 0; d < 100; d++) { BT.Eco.sleep(S); Object.values(S.market.cp).forEach(x => Object.values(x.pos).forEach(v => { if (!isFinite(v)) bad++; })); ['soy', 'rb', 'cl', 'au'].forEach(k => { if (!(S.market.futures[k].price > 0)) bad++; }); }
-    o.finite = bad === 0;
+  /* 2. 社区团购 */
+  const g = await page.evaluate((setup) => {
+    const o = {}, C = BT.CFG, S = eval(setup)(42), B = BT.Biz, G = BT.GroupBuy;
+    o.needShop = !G.open(S, 'slum', 'fruit', 0.85, 5).ok;
+    B.openShop(S, 'slum'); const sh = S.biz.shops[0]; B.hire(S, sh.id, 'clerk');
+    o.open = G.open(S, 'slum', 'fruit', 0.8, 5).ok;
+    B.wholesaleBuy(S, 'slum', 'fruit', 200);
+    const nw0 = BT.netWorth(S);
+    BT.Eco.sleep(S);
+    const gb = S.biz.gb;
+    o.orders = gb.last.orders > 0 && gb.prepaid > 0 && gb.due.length === 1;
+    o.liab = BT.GroupBuy.liability(S) === Math.round(gb.prepaid);
+    const st = B.warehouse(S, 'slum').goods.fruit, due = gb.due[0].qty;
+    G.close(S, gb.groups[0].id); BT.Eco.sleep(S);
+    o.deliver = gb.prepaid === 0 && gb.due.length === 0 && B.warehouse(S, 'slum').goods.fruit === st - due;
+    /* 违约：没货、没钱 → 退款、信用 −15；两次 → 罚款停团 */
+    B.warehouse(S, 'slum').goods.fruit = 0; sh.inventory.fruit = 0;
+    gb.due = [{ rid: 'slum', gid: 'fruit', qty: 40, paid: 200 }]; gb.prepaid = 200; S.cash = 0; const cr = S.biz.creditScore;
+    BT.Eco.sleep(S); o.default = gb.last.defaulted === 1 && S.biz.creditScore <= cr - 15;
+    gb.due = [{ rid: 'slum', gid: 'fruit', qty: 40, paid: 200 }]; gb.prepaid = 200; S.cash = 0;
+    BT.Eco.sleep(S); o.ban = gb.banUntil > S.day && gb.groups.length === 0 && !G.open(S, 'slum', 'fruit', 0.85, 5).ok;
+    /* 团长 */
+    S.cash = 50000; o.leader = G.hireLeader(S, 'college').ok && G.canRun(S, 'college');
     return o;
-  });
-  check('对手盘：成交时显示对手方', f.who);
-  check('对手盘：大单有滑点、价格被推开', f.slip && f.moved);
-  check('对手盘：AI + 你的仓位多空相抵（零和）', f.zeroSum);
-  check('对手盘：成交记录与持仓报告数据', f.tape && f.info);
-  check('追加保证金：强平价远离', f.addMargin);
-  check('猎杀：仓位大又接近强平 → 对冲基金反向做单', f.hunt && f.hunterSold);
-  check('金管局：汇率偏离 3% 以上入场干预', f.cb);
-  check('对手盘长跑 100 天无 NaN', f.finite);
+  }, setup);
+  check('团购：没门店也没团长的区开不了', g.needShop && g.open);
+  check('团购：当晚收款、记预收款负债、明早待交', g.orders && g.liab);
+  check('团购：第二天交货、清掉预收款、扣库存', g.deliver);
+  check('团购违约：退款、信用 −15', g.default);
+  check('团购：30 天内违约 2 次 → 罚款停团', g.ban);
+  check('团购：签团长后可在没门店的区开团', g.leader);
+
+  /* 3. 奶茶店 */
+  const t = await page.evaluate((setup) => {
+    const o = {}, C = BT.CFG, S = eval(setup)(43), T = BT.Tea;
+    o.open = T.open(S, 'college').ok && S.biz.tea.shops.length === 1 && !T.open(S, 'college').ok;
+    const sh = S.biz.tea.shops[0];
+    BT.Eco.sleep(S);
+    o.sell = sh.last.cups > 0 && sh.last.rev > 0 && sh.last.cups <= T.cap(sh);
+    /* 产能：人少 → 排队流失 */
+    sh.staff = 1; const keep = C.TEA.pool.college; C.TEA.pool.college = 2000; BT.Eco.sleep(S); o.queue = sh.last.queueLost > 0 && sh.last.cups <= T.cap(sh); C.TEA.pool.college = keep; sh.staff = 2;
+    /* 原料损耗 */
+    sh.auto = 0; sh.stock = { base: 100, fresh: 100 }; const st = Object.assign({}, sh.stock); BT.Eco.sleep(S);
+    o.spoil = sh.stock.fresh < st.fresh * 0.75; sh.auto = 150;
+    /* 新鲜度下降、研发、上架 */
+    const f0 = sh.menu[0].fresh; BT.Eco.sleep(S); o.fresh = sh.menu[0].fresh < f0;
+    o.rd = T.research(S, 'mango').ok && !T.research(S, 'grape').ok;
+    for (let i = 0; i < 3; i++) BT.Eco.sleep(S);
+    o.rdDone = S.biz.tea.owned.indexOf('mango') >= 0 && !S.biz.tea.rd && T.addMenu(S, sh.id, 'mango').ok && sh.menu.length === 4 && !T.addMenu(S, sh.id, 'pearl').ok;
+    /* 卫生抽查：不合格停业 */
+    sh.hygiene = 10; let n = 0; while (!sh.closed && n++ < 300) { sh.hygiene = 10; BT.Eco.sleep(S); }
+    o.closed = sh.closed > 0 || sh.last.closed;
+    T.clean(S, sh.id); o.clean = sh.hygiene === 100;
+    /* 潮流 + 跟风 */
+    S.biz.tea.trend = null; S.biz.tea.nextTrend = S.day; BT.Eco.sleep(S);
+    o.trend = !!S.biz.tea.trend && Object.keys(S.biz.tea.rivals).some(r => S.biz.tea.rivals[r].copies[S.biz.tea.trend.pid]);
+    o.worth = T.netWorth(S) > 0;
+    const led = S.biz.ledger[S.biz.ledger.length - 1]; o.ledger = led && led.lines && led.lines.tea != null;
+    o.upgrade = T.upgrade(S, sh.id).ok && sh.level === 2 && T.cap(sh) > 100;
+    return o;
+  }, setup);
+  check('奶茶店：每区一家、开张即营业', t.open && t.sell);
+  check('奶茶店：人手不够就排队流失', t.queue);
+  check('奶茶店：鲜果隔夜损耗', t.spoil);
+  check('奶茶店：饮品新鲜度每天下降', t.fresh);
+  check('奶茶店：研发 3 天出结果，可上架（菜单最多 4 款）', t.rd && t.rdDone);
+  check('奶茶店：卫生太差被抽查停业，清洁恢复', t.closed && t.clean);
+  check('奶茶店：茶饮潮流出现，AI 品牌跟风', t.trend);
+  check('奶茶店：计入净资产与公司流水、可升级', t.worth && t.ledger && t.upgrade);
 
   /* 4. UI */
   const ui = await page.evaluate(() => {
-    const o = {}, S = BT.S;
-    BT.App.switchTab('biz'); BT.App.bizTab('shops'); o.diag = /门店诊断/.test(document.body.innerText);
-    BT.App.bizTab('rivals'); const t = document.body.innerText; o.diplo = /结盟|盟约/.test(t) && /举报/.test(t);
-    BT.App.bizTab('supply');
-    BT.App.switchTab('market'); BT.Render.setMarketTab('future'); BT.Render.market(); o.cp = /持仓报告/.test(document.body.innerText) && /每档约/.test(document.body.innerText);
-    BT.Render.setMarketTab('forex'); BT.Render.market(); o.cpfx = /金管局/.test(document.body.innerText);
+    const o = {};
+    BT.App.switchTab('biz'); BT.App.bizTab('lines');
+    o.b2b = /批发商：给散户/.test(document.body.innerText);
+    BT.App.lineTab('gb'); o.gb = /先收钱、后交货/.test(document.body.innerText);
+    BT.App.lineTab('tea'); o.tea = /毛利高、人工重/.test(document.body.innerText) && /研发/.test(document.body.innerText);
     return o;
   });
-  check('门店页显示门店诊断', ui.diag);
-  check('竞争页显示结盟 / 举报', ui.diplo);
-  check('期货页显示盘口深度 + 持仓报告', ui.cp);
-  check('外汇页持仓报告含金管局', ui.cpfx);
+  check('业务线页：批发 / 团购 / 奶茶三个子页', ui.b2b && ui.gb && ui.tea);
   await page.setViewportSize({ width: 1180, height: 820 }); await page.waitForTimeout(200);
-  const over = await page.evaluate(() => { const out = {}; BT.App.switchTab('biz'); ['shops', 'rivals', 'supply', 'dash'].forEach(t => { BT.App.bizTab(t); out[t] = document.documentElement.scrollWidth <= window.innerWidth + 1; }); BT.App.switchTab('market'); ['future', 'forex'].forEach(t => { BT.Render.setMarketTab(t); BT.Render.market(); out[t] = document.documentElement.scrollWidth <= window.innerWidth + 1; }); return out; });
-  check('iPad 横屏：门店 / 竞争 / 供应链 / 仪表盘 / 期货 / 外汇不溢出', Object.values(over).every(Boolean), JSON.stringify(over));
+  const over = await page.evaluate(() => { const out = {}; ['b2b', 'gb', 'tea'].forEach(t => { BT.App.lineTab(t); out[t] = document.documentElement.scrollWidth <= window.innerWidth + 1; }); return out; });
+  check('iPad 横屏：三个子页不溢出', Object.values(over).every(Boolean), JSON.stringify(over));
+
+  /* 5. 长跑：三条业务线一起跑 120 天 */
+  const run = await page.evaluate((setup) => {
+    const C = BT.CFG, S = eval(setup)(44), B = BT.Biz;
+    B.openShop(S, 'slum'); B.hire(S, S.biz.shops[0].id, 'clerk');
+    B.wholesaleBuy(S, 'market', 'snack', 200); BT.B2B.open(S, 'market'); BT.B2B.set(S, 'market', 'term', 7);
+    BT.GroupBuy.open(S, 'slum', 'fruit', 0.85, 8); BT.Tea.open(S, 'oldst');
+    let bad = 0;
+    for (let d = 0; d < 120; d++) {
+      C.HAWKERS.goods.forEach(g => { if ((B.warehouse(S, 'market').goods[g] || 0) < 200) B.wholesaleBuy(S, 'market', g, 300); });
+      if ((B.warehouse(S, 'slum').goods.fruit || 0) < 100) B.wholesaleBuy(S, 'slum', 'fruit', 200);
+      (S.biz.deals || []).slice().forEach(x => BT.Rivals.respond(S, x.id, 'decline'));
+      BT.Eco.sleep(S); if (S.gameOver) break;
+      if (!isFinite(BT.netWorth(S)) || !isFinite(S.cash)) { bad++; break; }
+    }
+    return { bad, nw: BT.netWorth(S), b2b: BT.B2B.summary(S).p7, gb: S.biz.gb.hist.length, tea: S.biz.tea.hist.length };
+  }, setup);
+  check('长跑 120 天：三条业务线一起运行无 NaN', run.bad === 0 && run.gb > 0 && run.tea > 0, JSON.stringify(run));
 
   check('无 JS 报错', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close(); server.close();
-  console.log(fails ? '\n❌ v7.3 有 ' + fails + ' 项失败' : '\n🎉 v7.3 测试全部通过');
+  console.log(fails ? '\n❌ v7.4 有 ' + fails + ' 项失败' : '\n🎉 v7.4 测试全部通过');
   process.exit(fails ? 1 : 0);
 })();
