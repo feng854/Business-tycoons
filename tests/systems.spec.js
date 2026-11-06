@@ -175,8 +175,9 @@ function check(name, ok, extra) { console.log((ok ? '✅ ' : '❌ ') + name + (e
     const or = L.order(S, 'cbd', 'watch', 5, 'official'); o.order = or.ok && L.inTransit(S).length === 1 && L.quotaLeft(S, 'watch') === C.TRADE.licenseQuota - 5;
     o.greyCap = !L.order(S, 'cbd', 'perfume', 25, 'grey').ok;
     for (let i = 0; i < 8; i++) { S.biz.deals = []; BT.Eco.sleep(S); }
-    o.arrived = L.inTransit(S).length === 0 && (B.warehouse(S, 'cbd').goods.watch || 0) + (sh.inventory.watch || 0) === 5;
-    B.autoRestock(S); o.restockLux = (sh.inventory.watch || 0) === 5;
+    const got = (B.warehouse(S, 'cbd').goods.watch || 0) + (sh.inventory.watch || 0); /* 正规进口有 8% 概率货损，到货可能少于 5 */
+    o.arrived = L.inTransit(S).length === 0 && got >= 1 && got <= 5;
+    B.autoRestock(S); o.restockLux = (sh.inventory.watch || 0) === got;
     let sold = 0; for (let i = 0; i < 40; i++) { S.biz.deals = []; const n0 = sh.inventory.watch || 0; BT.Eco.sleep(S); sold += Math.max(0, n0 - (sh.inventory.watch || 0)); B.autoRestock(S); }
     o.luxSells = (sh.luxSold || 0) > 0;
     /* 水货：严打期间多下几单，必然有被查扣的 */
