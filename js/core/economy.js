@@ -174,6 +174,14 @@
     if (BT.Lux && BT.Lux.dailyTick) BT.Lux.dailyTick(S); /* 进口货先到港入库，当天就能调货 */
     if (BT.Manager && BT.Manager.dailyTick) BT.Manager.dailyTick(S); /* 区域经理：开门前补货调价 */
     if (BT.Biz && BT.Biz.dailyTick) BT.Biz.dailyTick(S);
+    if (S.biz) { /* v7.4 业务线：批发 / 团购 / 奶茶店，各自结算后并入公司当天的流水 */
+      var L = S.biz.ledger[S.biz.ledger.length - 1];
+      [BT.B2B, BT.GroupBuy, BT.Tea].forEach(function (m) {
+        var r = m && m.dailyTick ? m.dailyTick(S) : null; if (!r || !L || L.day !== S.day) return;
+        L.revenue += r.rev; L.cogs += r.cogs; L.other = (L.other || 0) + (r.cost || 0) + (r.bad || 0); L.profit += r.profit;
+        L.lines = L.lines || {}; L.lines[m === BT.B2B ? 'b2b' : (m === BT.Tea ? 'tea' : 'gb')] = r.profit;
+      });
+    }
     if (BT.Ads && BT.Ads.dailyTick) BT.Ads.dailyTick(S);
     if (BT.Insurance && BT.Insurance.dailyTick) BT.Insurance.dailyTick(S);
     if (BT.Franchise && BT.Franchise.dailyTick) BT.Franchise.dailyTick(S);
