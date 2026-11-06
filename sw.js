@@ -4,7 +4,7 @@
  * 策略：网络优先，拿到新文件就更新缓存；断网时用缓存。所以部署新版本后不会卡在旧版。
  *       /api/ 开头的请求（云存档）不缓存。
  * ========================================================================== */
-var CACHE = 'bt-cache-v8g';
+var CACHE = 'bt-cache-v8h';
 self.addEventListener('install', function (e) { self.skipWaiting(); });
 self.addEventListener('activate', function (e) {
   e.waitUntil(caches.keys().then(function (ks) { return Promise.all(ks.filter(function (k) { return k !== CACHE; }).map(function (k) { return caches.delete(k); })); }).then(function () { return self.clients.claim(); }));
