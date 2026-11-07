@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "start": "npx http-server -p 8080 -c-1",
-    "test": "node tests/smoke.spec.js && node tests/features.spec.js && node tests/systems.spec.js && node tests/expansion.spec.js && node tests/compete.spec.js && node tests/v73.spec.js && node tests/v74.spec.js",
+    "test": "node tests/smoke.spec.js && node tests/features.spec.js && node tests/systems.spec.js && node tests/expansion.spec.js && node tests/compete.spec.js && node tests/v73.spec.js && node tests/v74.spec.js && node tests/v75.spec.js",
     "test:features": "node tests/features.spec.js",
     "test:balance": "node tests/balance.spec.js",
     "test:bag": "node tests/bag.spec.js",
@@ -14,7 +14,8 @@
     "test:expansion": "node tests/expansion.spec.js",
     "test:compete": "node tests/compete.spec.js",
     "test:v73": "node tests/v73.spec.js",
-    "test:v74": "node tests/v74.spec.js"
+    "test:v74": "node tests/v74.spec.js",
+    "test:v75": "node tests/v75.spec.js"
   },
   "devDependencies": {
     "playwright": "^1.47.0"
