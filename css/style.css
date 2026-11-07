@@ -629,3 +629,20 @@ table.datatable tr.hl td { background: rgba(255,215,102,.08); }
 .tea-item .price { display: flex; gap: 4px; align-items: center; }
 .tea-item .price input { width: 56px; }
 @media (max-width: 900px) { .gb-form { grid-template-columns: 1fr 1fr; } }
+
+/* ---- v7.5 分线利润 / 简报 / 两难 ---- */
+.line-bars { display: grid; gap: 4px; margin: 4px 0 8px; }
+.lb-row { display: grid; grid-template-columns: 70px 1fr 110px; gap: 8px; align-items: center; font-size: 13px; }
+.lb-row b { text-align: right; } .lb-row b.up { color: #a8e6bd; } .lb-row b.down { color: #ffb3ae; }
+.lb-bar { height: 10px; background: #0b0e14; border-radius: 5px; border: 1px solid var(--border); overflow: hidden; }
+.lb-bar i { display: block; height: 100%; border-radius: 4px; }
+.mini-table td.down { color: #ffb3ae; } .mini-table td.up { color: #a8e6bd; }
+.brief { border-color: rgba(240,180,60,.45); }
+.brief-y { font-size: 13px; margin-bottom: 4px; } .brief-todo { font-size: 13px; padding: 5px 8px; background: rgba(106,163,255,.1); border-radius: 6px; margin-bottom: 4px; }
+.brief-risk { font-size: 12px; padding: 2px 0; border-top: 1px dashed #222a3a; } .brief-risk i { font-style: normal; color: var(--text-dim); }
+.brief-risk.bad { color: #ffcfcb; }
+.dlm-card { border-color: rgba(197,140,255,.5); }
+.dlm { padding: 6px 0; font-size: 13px; } .dlm + .dlm { border-top: 1px dashed #222a3a; }
+.dlm-opts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.dlm-opts button { text-align: left; max-width: 300px; line-height: 1.35; }
+.dlm-opts button .hint { font-size: 11px; }
