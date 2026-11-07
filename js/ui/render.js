@@ -813,7 +813,7 @@
     return '<div class="card mgr-card"><h3>🧑‍💼 区域经理 <span class="tag up">在岗 · 日薪 ' + U.money(M.wage(S)) + '</span><span class="spacer"></span><button class="small danger" onclick="BT.App.mgrFire()">解聘</button></h3>' +
       '<div class="mgr-row">' + chk('autoRestock', '📦 自动补货') + '<span class="hint">目标库存</span><input type="number" id="mgr-target" value="' + m.target + '" min="10" max="200" onchange="BT.App.mgrSet(\'target\', +this.value)">' +
       '<span class="hint">预算（现金占比）</span><select onchange="BT.App.mgrSet(\'budget\', +this.value)">' + [0.3, 0.5, 0.7].map(function (v) { return '<option value="' + v + '"' + (m.budget === v ? ' selected' : '') + '>' + v * 100 + '%</option>'; }).join('') + '</select>' +
-      chk('autoPrice', '🏷️ 自动定价（🔒的不动）') + chk('emergency', '🚚 断供应急') + chk('keepTalent', '🤝 自动留人') + '<label class="mgr-opt"><input type="checkbox" ' + (m.autoDefend !== false ? 'checked' : '') + ' onchange="BT.App.mgrSet(\'autoDefend\', this.checked)"> 🛡️ 被打价格战自动应战</label></div>' +
+      chk('autoPrice', '🏷️ 自动定价（🔒的不动）') + chk('emergency', '🚚 断供应急') + chk('keepTalent', '🤝 自动留人') + '<label class="mgr-opt"><input type="checkbox" ' + (m.lines !== false ? 'checked' : '') + ' onchange="BT.App.mgrSet(\'lines\', this.checked)"> 🧩 托管业务线（批发补货 / 团购备货 / 奶茶清洁与备料）</label><label class="mgr-opt"><input type="checkbox" ' + (m.autoDefend !== false ? 'checked' : '') + ' onchange="BT.App.mgrSet(\'autoDefend\', this.checked)"> 🛡️ 被打价格战自动应战</label></div>' +
       '<div class="hint">昨日工作：' + escapeHtml(m.last || '刚到岗') + '</div></div>';
   }
 
@@ -827,7 +827,7 @@
     biz.shops.forEach(function (sh) { U.keys(sh.inventory).forEach(function (g) { invVal += (sh.inventory[g] || 0) * BT.Eco.buyPrice(S, g, sh.regionId); }); U.keys(sh.sold7 || {}).forEach(function (g) { sold7 += sh.sold7[g] * BT.Eco.buyPrice(S, g, sh.regionId); }); });
     U.keys(biz.warehouses).forEach(function (rid) { var wh = biz.warehouses[rid]; U.keys(wh.goods).forEach(function (g) { invVal += (wh.goods[g] || 0) * BT.Eco.buyPrice(S, g, rid); }); });
     var turn = sold7 > 0 ? Math.round(invVal / (sold7 / 7)) : null;
-    var html = '<div class="card"><h3>📈 经营仪表盘</h3><div class="shop-kpi">' +
+    var html = (BT.LinesUI ? BT.LinesUI.briefCard(S) + BT.LinesUI.dilemmaCard(S) : '') + '<div class="card"><h3>📈 经营仪表盘</h3><div class="shop-kpi">' +
       kpi('近7日营收', U.money(rev7)) + kpi('近7日净利', U.money(pro7), pro7 < 0 ? 'down' : 'up') + kpi('日均净利', U.money(l7.length ? pro7 / l7.length : 0), pro7 < 0 ? 'down' : 'up') +
       kpi('现金', U.money(S.cash), S.cash < 0 ? 'down' : '') + kpi('现金够付租金工资', runway >= 999 ? '—' : runway + ' 天', runway < 10 ? 'down' : '') +
       kpi('存货总值', U.money(invVal)) + kpi('存货周转', turn == null ? '—' : turn + ' 天', turn > 30 ? 'down' : '') + '</div></div>';
@@ -988,7 +988,7 @@
 
   function financeTab(S) {
     var biz = S.biz;
-    return '<div class="card"><h3>📊 财务报表</h3><div class="chart-box small"><canvas id="bizLedgerChart"></canvas></div>' + ledgerTable(biz) + '</div>' +
+    return (BT.LinesUI ? BT.LinesUI.financeCards(S) : '') + '<div class="card"><h3>📊 财务报表</h3><div class="chart-box small"><canvas id="bizLedgerChart"></canvas></div>' + ledgerTable(biz) + '</div>' +
       '<div class="card"><h3>🏦 银行贷款</h3>' + loanBox(S, biz) + '</div>';
   }
   function empireTab(S) {
