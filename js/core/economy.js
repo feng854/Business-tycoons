@@ -181,6 +181,7 @@
         L.revenue += r.rev; L.cogs += r.cogs; L.other = (L.other || 0) + (r.cost || 0) + (r.bad || 0); L.profit += r.profit;
         L.lines = L.lines || {}; L.lines[m === BT.B2B ? 'b2b' : (m === BT.Tea ? 'tea' : 'gb')] = r.profit;
       });
+      if (BT.Insight) BT.Insight.dailyTick(S); /* v7.5：现金记录、经理托管业务线、两难事件 */
     }
     if (BT.Ads && BT.Ads.dailyTick) BT.Ads.dailyTick(S);
     if (BT.Insurance && BT.Insurance.dailyTick) BT.Insurance.dailyTick(S);
