@@ -11,7 +11,7 @@
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function act(res) { BT.App.toast(res); BT.save(); BT.Render._force = true; try { BT.Render.all(); } finally { BT.Render._force = false; } return res; }
   function val(id) { var el = document.getElementById(id); return el ? el.value : ''; }
-  function gname(g) { return C.goodsMap[g].icon + C.goodsMap[g].name; }
+  function gname(g) { return BT.GroupBuy && BT.GroupBuy.isCard(g) ? BT.GroupBuy.gname(g) : C.goodsMap[g].icon + C.goodsMap[g].name; }
   function rname(r) { return C.regionMap[r].icon + C.regionMap[r].name; }
   function sign(n) { return '<b class="' + (n < 0 ? 'down' : 'up') + '">' + (n >= 0 ? '+' : '') + U.money(n) + '</b>'; }
 
@@ -20,7 +20,7 @@
     var head = '<div class="card"><div class="pill-group">' + subs.map(function (t) {
       return '<button class="' + (sub === t[0] ? 'active' : '') + '" onclick="BT.App.lineTab(\'' + t[0] + '\')">' + t[1] + '</button>';
     }).join('') + '</div>' + summary(S) + '</div>';
-    return head + (sub === 'b2b' ? b2bTab(S) : (sub === 'gb' ? gbTab(S) : teaTab(S)));
+    return UI.dilemmaCard(S) + head + (sub === 'b2b' ? b2bTab(S) : (sub === 'gb' ? gbTab(S) : teaTab(S)));
   };
   function summary(S) {
     var p = function (h) { return U.sum((h || []).slice(-7), function (x) { return x.profit; }); };
@@ -62,6 +62,7 @@
         '<div class="kv"><span>3 天内到期</span><b>' + U.money(sm.soon) + '</b></div>' +
         '<div class="kv"><span>近 30 天坏账</span><b class="' + (sm.bad30 ? 'down' : '') + '">' + U.money(sm.bad30) + '</b></div>' +
         '<div class="kv"><span>缺货少卖</span><b>' + (L ? L.lost + ' 件' : '-') + '</b></div></div>' +
+        (function () { var q = B2.factorQuote(S); return q && q.amt > 0 ? '<div class="trade-row" style="margin-top:6px;grid-template-columns:1fr"><button class="small" title="把还没到期的应收账款卖给银行，立刻拿钱；之后的坏账风险归银行。要信用 ≥ 600" onclick="BT.App.b2bFactor()">🏦 应收保理：' + U.money(q.amt) + ' 立即到账 ' + U.money(q.cash) + '（手续费 ' + (q.fee * 100).toFixed(1) + '%，平均还有 ' + q.days + ' 天到期）</button></div>' : ''; })() +
         (sm.bad ? '<div class="trade-row" style="margin-top:6px;grid-template-columns:1fr"><button class="small" onclick="BT.App.b2bCollect()" title="付 20% 手续费，60% 概率追回一半；品牌 −1">📞 委托催收坏账 ' + U.money(sm.bad) + '（手续费 ' + U.money(Math.round(sm.bad * 0.2)) + '）</button></div>' : '') +
         '<div class="hint">坏账率（每个账期）：城中村 4%、学院区 3%、批发市场 2.5%、老街 / 码头 2%、商业街 1%；15 天账期 ×1.5。某区欠款超过 ¥2,000 时，偶尔会有摊贩卷货跑路。</div>' +
         (b.war && b.war.until >= S.day ? '<div class="hint down">🦈 ' + (BT.Rivals.get(S, b.war.by) || {}).name + ' 在打批发价格战（还剩 ' + (b.war.until - S.day + 1) + ' 天）</div>' : '') + '</div>';
@@ -97,14 +98,14 @@
     /* 开团 */
     var regs = S.unlockedRegions.filter(function (r) { return G.canRun(S, r); });
     html += '<div class="card"><h3>➕ 开团</h3>' + (regs.length && !ban ? '<div class="trade-row gb-form"><select id="gb-r">' + regs.map(function (r) { return '<option value="' + r + '">' + rname(r) + '</option>'; }).join('') + '</select>' +
-      '<select id="gb-g">' + C.GOODS.filter(function (x) { return !x.lux; }).map(function (x) { return '<option value="' + x.id + '">' + x.icon + x.name + (C.GB.fresh.indexOf(x.id) >= 0 ? '（生鲜）' : '') + '</option>'; }).join('') + '</select>' +
+      '<select id="gb-g"><option value="teacard">🎟️奶茶券（5 杯，要该区有你的奶茶店）</option>' + C.GOODS.filter(function (x) { return !x.lux; }).map(function (x) { return '<option value="' + x.id + '">' + x.icon + x.name + (C.GB.fresh.indexOf(x.id) >= 0 ? '（生鲜）' : '') + '</option>'; }).join('') + '</select>' +
       '<input id="gb-ratio" type="number" step="0.01" min="0.7" max="0.95" value="0.88" title="团购价 = 零售价 × 这个数"><input id="gb-min" type="number" min="5" max="80" value="15" title="成团人数">' +
-      '<button class="primary" onclick="BT.App.gbOpen()">开团</button></div><div class="hint">折扣（零售价 × 0.7~0.95）· 成团人数（不够就全部退款）。同时最多 ' + C.GB.maxGroups + ' 个团，每晚自动结单，直到你停团。</div>'
+      '<button class="primary" onclick="BT.App.gbOpen()">开团</button></div><div class="hint">折扣（零售价 × 0.6~0.95，低于 0.75 算「引流款」：亏点钱，第二天同区门店 / 奶茶店多来客人）· 成团人数（不够就全部退款）。奶茶券的钱先到账，顾客 30 天内来兑换，过期作废。同时最多 ' + C.GB.maxGroups + ' 个团，每晚自动结单，直到你停团。</div>'
       : (ban ? '<div class="hint">停团中。</div>' : '<div class="hint">要在有门店的区开团，或者先签团长。</div>')) + '</div>';
     if (g.groups.length) html += '<div class="card"><h3>📣 进行中的团</h3>' + g.groups.map(function (x) {
       var exp = Math.round(G.expect(S, x));
       return '<div class="deal-row"><span>' + rname(x.rid) + ' ' + gname(x.gid) + ' · ¥' + G.priceOf(S, x).toFixed(2) + '（' + Math.round(x.ratio * 100) / 10 + ' 折）· ' + x.minN + ' 人成团 · 预计 ' + exp + ' 单' +
-        (x.y ? ' · 昨晚 ' + x.y.n + ' 单' + (x.y.ok ? ' ✅' : ' ❌未成团') : '') + '</span><button class="small" onclick="BT.App.gbClose(\'' + x.id + '\')">停团</button></div>';
+        (x.y ? ' · 昨晚 ' + x.y.n + ' 单' + (x.y.ok ? ' ✅' : ' ❌未成团') : '') + (g.loyal && g.loyal[x.rid] ? ' · 回头客 +' + Math.round(g.loyal[x.rid] * 100) + '%' : '') + (x.ratio < 0.75 ? ' <span class="tag warn">引流</span>' : '') + '</span><button class="small" onclick="BT.App.gbClose(\'' + x.id + '\')">停团</button></div>';
     }).join('') + '</div>';
     /* 团长 */
     html += '<div class="card"><h3>🧍 团长（没门店的区靠他们拉群、分货）</h3><div class="leader-grid">' + S.unlockedRegions.map(function (r) {
@@ -119,6 +120,8 @@
     var T = BT.Tea, t = T.ensure(S), html = '';
     html += '<div class="card"><h3>🧋 奶茶店：毛利高、人工重、靠爆品</h3><div class="desc">每个区可以另开一家奶茶店（不占零售店名额）。一杯 ¥8~14，原料 + 杯子约 ¥2.6~4.2，但每个店员一天最多做约 ' + C.TEA.cupsPerStaff + ' 杯，做不过来就排队流失（排长队会涨品牌）。' +
       '鲜果每天坏 30%、基础料坏 10%，备多了浪费、备少了断料。饮品卖久了不新鲜，要研发新品；你卖爆的款，AI 茶饮品牌几天后会跟风。热天卖得多，雨雪天少。</div>' +
+      (T.costMul(S) < 1 ? '<div class="hint up">🤝 自家批发部集采：原料便宜 15%</div>' : '<div class="hint">开了批发部之后，奶茶原料走集采能便宜 15%。</div>') +
+      (t.collab && t.collab.until >= S.day ? '<div class="tea-trend">🤝 联名进行中：' + esc(t.collab.ip) + '（还剩 ' + (t.collab.until - S.day + 1) + ' 天，客流 ×1.5）</div>' : '') +
       (t.trend && t.trend.until >= S.day ? '<div class="tea-trend">🔥 当前潮流：' + T.P[t.trend.pid].icon + T.P[t.trend.pid].name + '（还剩 ' + (t.trend.until - S.day + 1) + ' 天，上架的店客流翻倍）' + (t.owned.indexOf(t.trend.pid) < 0 ? ' —— 你还没研发！' : '') + '</div>' : '') +
       '<div class="trade-row" style="margin-top:6px;grid-template-columns:1fr auto"><select id="tea-open-r">' + S.unlockedRegions.filter(function (r) { return !t.shops.some(function (s) { return s.rid === r; }); }).map(function (r) {
         var rv = C.TEA.rivals.filter(function (x) { return t.rivals[x.id].regions[r]; }).map(function (x) { return x.icon; }).join('');
@@ -132,6 +135,7 @@
         return '<div class="tea-prod' + (own ? ' own' : '') + '"><b>' + p.icon + p.name + '</b><span class="hint">建议价 ¥' + p.price + (p.fresh ? ' · 鲜果' : '') + (own ? ' · 品质 ' + q.toFixed(2) : ' · 未研发') + '</span>' +
           '<button class="small" ' + (t.rd ? 'disabled' : '') + ' onclick="BT.App.teaRD(\'' + p.id + '\')">' + (own ? '改良' : '研发') + '</button></div>';
       }).join('') + '</div></div>';
+    html += teaFrCard(S);
     t.shops.forEach(function (sh) {
       var L = sh.last || {}, cap = T.cap(sh);
       html += '<div class="card tea-shop"><h3>🧋 ' + rname(sh.rid) + '奶茶店 Lv' + sh.level + (sh.closed > 0 ? ' <span class="tag down">停业整改 ' + sh.closed + ' 天</span>' : '') +
@@ -142,7 +146,8 @@
         '<div class="kv"><span>原料 / 房租 / 工资</span><b>' + U.money(L.cogs || 0) + ' / ' + U.money(L.rent || T.rent(sh)) + ' / ' + U.money(L.wage || sh.staff * C.TEA.wage) + '</b></div>' +
         '<div class="kv"><span>茶饮市场份额</span><b>' + (L.share != null ? Math.round(L.share * 100) + '%' : '-') + '</b></div>' +
         '<div class="kv"><span>店员 / 日产能</span><b>' + sh.staff + ' 人 / ' + cap + ' 杯 <button class="small" onclick="BT.App.teaStaff(\'' + sh.id + '\',-1)">−</button><button class="small" onclick="BT.App.teaStaff(\'' + sh.id + '\',1)">+</button></b></div>' +
-        '<div class="kv"><span>库存原料</span><b>基础 ' + sh.stock.base + ' · 鲜果 ' + sh.stock.fresh + '</b></div></div>' +
+        '<div class="kv"><span>库存原料</span><b>基础 ' + sh.stock.base + ' · 鲜果 ' + sh.stock.fresh + '</b></div>' +
+        (L.vouch || L.redeemed ? '<div class="kv"><span>🎟️ 奶茶券 未兑 / 昨天兑换</span><b>' + (L.vouch || 0) + ' / ' + (L.redeemed || 0) + ' 杯</b></div>' : '') + '</div>' +
         '<div class="trade-row" style="grid-template-columns:auto 1fr auto auto auto auto"><span class="hint">每天自动备料到</span><input id="tea-auto-' + sh.id + '" type="number" min="0" max="2000" value="' + sh.auto + '">' +
         '<button class="small" onclick="BT.App.teaAuto(\'' + sh.id + '\')">保存</button><button class="small" onclick="BT.App.teaRestock(\'' + sh.id + '\')">现在补料</button>' +
         '<button class="small" onclick="BT.App.teaClean(\'' + sh.id + '\')">🧽 清洁 ' + U.money(C.TEA.cleanCost) + '</button>' +
@@ -157,6 +162,54 @@
     });
     return html;
   }
+
+  function teaFrCard(S) {
+    var T = BT.Tea, f = (S.biz.tea && S.biz.tea.fr) || { open: false, stores: [], apps: [] }, ok = T.frUnlocked(S), F = C.TEA.fr;
+    var html = '<div class="card"><h3>🏪 奶茶加盟</h3><div class="desc">加盟商付 ' + U.money(F.fee) + ' 加盟费，之后每卖一杯给你 ¥' + F.perCup + '（品牌费 + 原料差价）。加盟店出食品安全事故会连累品牌；派督导（每店每天 ¥' + F.supCost + '）能把事故率压到三成。同区加盟店会分走直营店一些客人。</div>';
+    if (!ok && !f.stores.length) return html + '<div class="hint">解锁：≥2 家直营奶茶店、品牌 ≥15（现在 ' + ((S.biz.tea && S.biz.tea.shops.length) || 0) + ' 家、品牌 ' + Math.round(S.biz.brand) + '）</div></div>';
+    html += '<div class="trade-row" style="grid-template-columns:auto auto 1fr"><button class="small' + (f.open ? ' primary' : '') + '" onclick="BT.App.teaFrToggle()">' + (f.open ? '✅ 招商中（点击暂停）' : '开放招商') + '</button>' +
+      '<button class="small' + (f.sup ? ' primary' : '') + '" onclick="BT.App.teaFrSup()">' + (f.sup ? '👮 督导中' : '派驻督导') + '</button><span class="hint">' + (f.last ? '昨天加盟店卖 ' + f.last.cups + ' 杯，你收 ' + U.money(f.last.inc) + (f.last.sup ? '，督导费 ' + U.money(f.last.sup) : '') : '') + '</span></div>';
+    html += f.apps.map(function (a) { return '<div class="deal-row"><span>📝 ' + esc(a.owner) + ' 申请在' + C.regionMap[a.rid].name + '开加盟店</span><button class="small primary" onclick="BT.App.teaFrApprove(\'' + a.id + '\')">批准（收 ' + U.money(F.fee) + '）</button><button class="small" onclick="BT.App.teaFrReject(\'' + a.id + '\')">婉拒</button></div>'; }).join('');
+    html += f.stores.length ? '<div class="leader-grid">' + f.stores.map(function (st) { return '<div class="kv"><span>' + esc(st.owner) + '</span><b>昨天 ' + (st.cups || 0) + ' 杯 <button class="small" onclick="BT.App.teaFrClose(\'' + st.id + '\')">解约</button></b></div>'; }).join('') + '</div>' : '<div class="hint">还没有加盟店。</div>';
+    return html + '</div>';
+  }
+
+  /* ---------------------------------------------------------------- 财务 / 简报 / 两难（给 render.js 调用） */
+  UI.financeCards = function (S) {
+    var I = BT.Insight; if (!I) return '';
+    var ser = I.lineSeries(S, 14), sum = I.lineSum(S, 14), keys = [['retail', '🏬 门店', '#6aa3ff'], ['b2b', '🚚 批发', '#f0b43c'], ['gb', '🛒 团购', '#46c47e'], ['tea', '🧋 奶茶', '#c58cff']];
+    var max = Math.max.apply(null, keys.map(function (k) { return Math.abs(sum[k[0]]); }).concat([1]));
+    var html = '<div class="card"><h3>🧩 分业务线利润（近 14 天）</h3><div class="line-bars">' + keys.map(function (k) {
+      var v = sum[k[0]], w = Math.round(Math.abs(v) / max * 100);
+      return '<div class="lb-row"><span>' + k[1] + '</span><span class="lb-bar"><i style="width:' + w + '%;background:' + (v < 0 ? '#e5534b' : k[2]) + '"></i></span><b class="' + (v < 0 ? 'down' : 'up') + '">' + (v >= 0 ? '+' : '') + U.money(v) + '</b></div>';
+    }).join('') + '</div>' +
+      '<table class="mini-table"><tr><th>日期</th>' + keys.map(function (k) { return '<th>' + k[1] + '</th>'; }).join('') + '<th>合计</th></tr>' + ser.slice(-7).reverse().map(function (x) {
+        return '<tr><td>第' + x.day + '天</td>' + keys.map(function (k) { return '<td class="' + (x[k[0]] < 0 ? 'down' : '') + '">' + U.money(x[k[0]]) + '</td>'; }).join('') + '<td class="' + (x.total < 0 ? 'down' : 'up') + '">' + U.money(x.total) + '</td></tr>';
+      }).join('') + '</table><div class="hint">门店 = 公司总利润减去三条业务线（也含利息、营销等公司层面的费用）。</div></div>';
+    var fc = I.forecast(S);
+    html += '<div class="card"><h3>💵 现金流预测（未来 7 天）</h3><div class="grid cols-3"><div class="kv"><span>现在现金</span><b>' + U.money(S.cash) + '</b></div><div class="kv"><span>日均经营现金流</span><b class="' + (fc.base < 0 ? 'down' : 'up') + '">' + (fc.base >= 0 ? '+' : '') + U.money(fc.base) + '</b></div>' +
+      '<div class="kv"><span>现金还能撑</span><b class="' + (fc.runway != null && fc.runway < 15 ? 'down' : '') + '">' + (fc.runway == null ? '经营现金为正' : fc.runway + ' 天') + '</b></div></div>' +
+      '<table class="mini-table"><tr><th>日期</th><th>经营</th><th>已知收付</th><th>当天净流入</th><th>预计现金</th></tr>' + fc.days.map(function (d) {
+        return '<tr><td>第' + d.day + '天</td><td>' + U.money(d.base) + '</td><td>' + (d.items.map(function (x) { return x.t + ' ' + (x.v >= 0 ? '+' : '') + U.money(x.v); }).join('；') || '-') + '</td><td class="' + (d.net < 0 ? 'down' : 'up') + '">' + U.money(d.net) + '</td><td class="' + (d.cash < 0 ? 'down' : '') + '">' + U.money(d.cash) + '</td></tr>';
+      }).join('') + '</table><div class="hint">经营 = 近 7 天日均利润 − 赊销（钱还没到）+ 利息（记在贷款上、不扣现金）；已知收付 = 应收账款到期、团购明早缺货要现买。团购预收款已经在现金里，但它是要交货的负债。</div></div>';
+    return html;
+  };
+  UI.briefCard = function (S) {
+    var I = BT.Insight; if (!I || !S.biz) return '';
+    var b = I.brief(S), y = b.y, icon = { bad: '🔴', warn: '🟡', info: '💡' };
+    return '<div class="card brief"><h3>☀️ 今日简报 <span class="hint">第 ' + S.day + ' 天</span></h3>' +
+      (y ? '<div class="brief-y">昨天：<b class="' + (y.total < 0 ? 'down' : 'up') + '">' + (y.total >= 0 ? '+' : '') + U.money(y.total) + '</b>（门店 ' + U.money(y.retail) + (y.b2b ? ' · 批发 ' + U.money(y.b2b) : '') + (y.gb ? ' · 团购 ' + U.money(y.gb) : '') + (y.tea ? ' · 奶茶 ' + U.money(y.tea) : '') + '）</div>' : '') +
+      '<div class="brief-todo">👉 先做：' + esc(b.todo) + '</div>' +
+      (b.risks.length ? b.risks.slice(0, 6).map(function (r) { return '<div class="brief-risk ' + r.lv + '">' + icon[r.lv] + ' ' + esc(r.t) + (r.fix ? ' <i>→ ' + esc(r.fix) + '</i>' : '') + '</div>'; }).join('') + (b.risks.length > 6 ? '<div class="hint">还有 ' + (b.risks.length - 6) + ' 条…</div>' : '') : '<div class="hint">今天没有要特别注意的事。</div>') + '</div>';
+  };
+  UI.dilemmaCard = function (S) {
+    var ins = S.biz && S.biz.ins; if (!ins || !ins.dlm.length) return '';
+    return '<div class="card dlm-card"><h3>🧭 待你拍板</h3>' + ins.dlm.map(function (d) {
+      return '<div class="dlm"><div>' + esc(d.text) + ' <span class="hint">（' + (d.expire - S.day + 1) + ' 天内不拍板，默认「' + esc(d.opts[d.opts.length - 1].label) + '」）</span></div><div class="dlm-opts">' + d.opts.map(function (o, i) {
+        return '<button class="small' + (i === 0 ? ' primary' : '') + '" title="' + esc(o.desc) + '" onclick="BT.App.dlm(\'' + d.id + '\',' + i + ')">' + esc(o.label) + '<br><span class="hint">' + esc(o.desc) + '</span></button>';
+      }).join('') + '</div></div>';
+    }).join('') + '</div>';
+  };
 
   /* ---------------------------------------------------------------- 按钮动作 */
   var A = BT.App = BT.App || {};
@@ -179,4 +232,11 @@
   A.teaPrice = function (id, p) { act(BT.Tea.setPrice(BT.S, id, p, val('tea-pr-' + id + '-' + p))); };
   A.teaRemove = function (id, p) { act(BT.Tea.removeMenu(BT.S, id, p)); };
   A.teaAdd = function (id) { act(BT.Tea.addMenu(BT.S, id, val('tea-add-' + id))); };
+  A.b2bFactor = function () { var q = BT.B2B.factorQuote(BT.S); if (!q || !confirm('把 ' + U.money(q.amt) + ' 应收账款卖给银行，立即到账 ' + U.money(q.cash) + '？')) return; act(BT.B2B.factor(BT.S)); };
+  A.teaFrToggle = function () { act(BT.Tea.frToggle(BT.S)); };
+  A.teaFrSup = function () { act(BT.Tea.frSup(BT.S)); };
+  A.teaFrApprove = function (id) { act(BT.Tea.frApprove(BT.S, id)); };
+  A.teaFrReject = function (id) { act(BT.Tea.frReject(BT.S, id)); };
+  A.teaFrClose = function (id) { if (!confirm('解约这家加盟店？品牌 −1')) return; act(BT.Tea.frClose(BT.S, id)); };
+  A.dlm = function (id, i) { act(BT.Insight.resolve(BT.S, id, i)); };
 })();
